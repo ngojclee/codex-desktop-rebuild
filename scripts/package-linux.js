@@ -78,21 +78,36 @@ async function main() {
   fs.rmSync(OUT, { recursive: true, force: true });
 
   const electronVersion = require("electron/package.json").version;
-  const outputPaths = await packager({
-    dir: ROOT,
-    out: OUT,
-    overwrite: true,
-    platform: "linux",
-    arch,
-    name: "Codex",
-    executableName: "Codex",
-    icon: path.join(ROOT, "resources", "electron"),
-    electronVersion,
-    asar: { unpack: "{**/*.node,**/node-pty/build/Release/spawn-helper,**/node-pty/prebuilds/*/spawn-helper}" },
-    ignore: linuxIgnore,
-    prune: true,
-    quiet: false,
-  });
+  console.log(`[linux-package] invoking @electron/packager for linux/${arch}`);
+  const keepAlive = setInterval(() => {}, 1000);
+  const timeout = setTimeout(() => {
+    console.error("[linux-package] packager timed out after 20 minutes");
+    process.exit(1);
+  }, 20 * 60 * 1000);
+
+  let outputPaths;
+  try {
+    outputPaths = await packager({
+      dir: ROOT,
+      out: OUT,
+      overwrite: true,
+      platform: "linux",
+      arch,
+      name: "Codex",
+      executableName: "Codex",
+      icon: path.join(ROOT, "resources", "electron"),
+      electronVersion,
+      asar: { unpack: "{**/*.node,**/node-pty/build/Release/spawn-helper,**/node-pty/prebuilds/*/spawn-helper}" },
+      ignore: linuxIgnore,
+      prune: true,
+      quiet: false,
+    });
+  } finally {
+    clearInterval(keepAlive);
+    clearTimeout(timeout);
+  }
+
+  console.log(`[linux-package] packager returned: ${JSON.stringify(outputPaths)}`);
 
   const appDir = outputPaths[0] || path.join(OUT, `Codex-linux-${arch}`);
   const resourcesDir = path.join(appDir, "resources");
