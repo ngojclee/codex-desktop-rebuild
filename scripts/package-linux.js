@@ -11,8 +11,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { unzipSync } = require("cross-zip");
 const { download } = require("@electron/get");
-const extract = require("extract-zip");
 
 const ROOT = path.join(__dirname, "..");
 const SRC = path.join(ROOT, "src");
@@ -122,7 +122,7 @@ async function main() {
 
   console.log(`[linux-package] extracting Electron ${electronVersion} linux/${arch}`);
   fs.mkdirSync(appDir, { recursive: true });
-  await extract(zipPath, { dir: appDir });
+  unzipSync(zipPath, appDir);
 
   const electronBin = path.join(appDir, "electron");
   const codexBin = path.join(appDir, "Codex");

@@ -43,7 +43,6 @@
     "acorn": "^8.16.0",
     "cross-zip": "^4.0.1",
     "electron": "^42.0.1",
-    "extract-zip": "^2.0.1",
     "fast-xml-parser": "^5.5.9"
   },
   "dependencies": {
