@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * Package Linux builds without relying on Electron Forge makers.
+ * Package Linux builds without relying on Electron Forge or Electron Packager.
  *
- * Forge is still used for macOS and Windows, but the Linux lane can currently
- * resolve makers and then exit without writing out/. Calling @electron/packager
- * directly gives us a deterministic packaged app directory, after which
- * ensure-linux-artifact.js creates the release zip.
+ * Forge/Packager currently start the Linux package step in CI but do not
+ * materialize out/. This script assembles the Electron app directory directly:
+ * download Electron, extract it, pack our staged app.asar, copy Codex resources,
+ * then let ensure-linux-artifact.js zip and verify the result.
  */
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
-const { packager } = require("@electron/packager");
+const asar = require("@electron/asar");
+const { download } = require("@electron/get");
+const extract = require("extract-zip");
 
 const ROOT = path.join(__dirname, "..");
 const SRC = path.join(ROOT, "src");
@@ -54,14 +57,34 @@ function copyDir(src, dest) {
   return copied;
 }
 
-function linuxIgnore(filePath) {
-  if (filePath === "") return false;
-  if (filePath === "/package.json") return false;
-  const allowed = ["/src/.vite/build", "/src/webview", "/src/skills", "/src/native-menu-locales", "/src/node_modules"];
-  for (const allowedPath of allowed) {
-    if (allowedPath.startsWith(filePath) || filePath.startsWith(allowedPath)) return false;
+function copyPlain(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  let copied = 0;
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const source = path.join(src, entry.name);
+    const target = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copied += copyPlain(source, target);
+    } else if (!entry.isSymbolicLink()) {
+      fs.copyFileSync(source, target);
+      copied += 1;
+    }
   }
-  return true;
+  return copied;
+}
+
+function stageAppSource(stageDir) {
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, "package.json"), path.join(stageDir, "package.json"));
+
+  let copied = 1;
+  for (const rel of [".vite/build", "webview", "skills", "native-menu-locales", "node_modules"]) {
+    const source = path.join(SRC, rel);
+    if (fs.existsSync(source)) {
+      copied += copyPlain(source, path.join(stageDir, "src", rel));
+    }
+  }
+  return copied;
 }
 
 async function main() {
@@ -78,42 +101,35 @@ async function main() {
   fs.rmSync(OUT, { recursive: true, force: true });
 
   const electronVersion = require("electron/package.json").version;
-  console.log(`[linux-package] invoking @electron/packager for linux/${arch}`);
-  const keepAlive = setInterval(() => {}, 1000);
-  const timeout = setTimeout(() => {
-    console.error("[linux-package] packager timed out after 20 minutes");
-    process.exit(1);
-  }, 20 * 60 * 1000);
+  const appDir = path.join(OUT, `Codex-linux-${arch}`);
+  const zipPath = await download(electronVersion, { platform: "linux", arch });
 
-  let outputPaths;
-  try {
-    outputPaths = await packager({
-      dir: ROOT,
-      out: OUT,
-      overwrite: true,
-      platform: "linux",
-      arch,
-      name: "Codex",
-      executableName: "Codex",
-      icon: path.join(ROOT, "resources", "electron"),
-      electronVersion,
-      asar: { unpack: "{**/*.node,**/node-pty/build/Release/spawn-helper,**/node-pty/prebuilds/*/spawn-helper}" },
-      ignore: linuxIgnore,
-      prune: true,
-      quiet: false,
-    });
-  } finally {
-    clearInterval(keepAlive);
-    clearTimeout(timeout);
+  console.log(`[linux-package] extracting Electron ${electronVersion} linux/${arch}`);
+  fs.mkdirSync(appDir, { recursive: true });
+  await extract(zipPath, { dir: appDir });
+
+  const electronBin = path.join(appDir, "electron");
+  const codexBin = path.join(appDir, "Codex");
+  if (!fs.existsSync(electronBin)) {
+    throw new Error(`Electron binary missing after extract: ${electronBin}`);
   }
+  fs.renameSync(electronBin, codexBin);
+  fs.chmodSync(codexBin, 0o755);
 
-  console.log(`[linux-package] packager returned: ${JSON.stringify(outputPaths)}`);
-
-  const appDir = outputPaths[0] || path.join(OUT, `Codex-linux-${arch}`);
   const resourcesDir = path.join(appDir, "resources");
   if (!fs.existsSync(resourcesDir)) {
     throw new Error(`Packaged resources directory missing: ${resourcesDir}`);
   }
+
+  fs.rmSync(path.join(resourcesDir, "default_app.asar"), { force: true });
+  fs.rmSync(path.join(resourcesDir, "default_app"), { recursive: true, force: true });
+
+  const appStage = fs.mkdtempSync(path.join(os.tmpdir(), "codex-linux-app-"));
+  const staged = stageAppSource(appStage);
+  await asar.createPackageWithOptions(appStage, path.join(resourcesDir, "app.asar"), {
+    unpack: "{**/*.node,**/node-pty/build/Release/spawn-helper,**/node-pty/prebuilds/*/spawn-helper}",
+  });
+  fs.rmSync(appStage, { recursive: true, force: true });
 
   const copied = copyDir(platformDir, resourcesDir);
   for (const executable of ["codex", "rg"]) {
@@ -121,7 +137,7 @@ async function main() {
     if (fs.existsSync(full)) fs.chmodSync(full, 0o755);
   }
 
-  console.log(`[linux-package] ${path.relative(ROOT, appDir)} ready (${copied} resource files copied)`);
+  console.log(`[linux-package] ${path.relative(ROOT, appDir)} ready (${staged} app files staged, ${copied} resource files copied)`);
 }
 
 main().catch((error) => {

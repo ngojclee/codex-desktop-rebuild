@@ -38,11 +38,12 @@
     "@electron-forge/plugin-fuses": "^7.10.2",
     "@electron/asar": "^4.1.2",
     "@electron/fuses": "^1.8.0",
-    "@electron/packager": "^18.4.4",
+    "@electron/get": "^3.1.0",
     "@electron/rebuild": "^3.7.1",
     "acorn": "^8.16.0",
     "cross-zip": "^4.0.1",
     "electron": "^42.0.1",
+    "extract-zip": "^2.0.1",
     "fast-xml-parser": "^5.5.9"
   },
   "dependencies": {
