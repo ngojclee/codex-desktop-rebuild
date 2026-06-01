@@ -10,7 +10,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const asar = require("@electron/asar");
+const { execFileSync } = require("child_process");
 const { download } = require("@electron/get");
 const extract = require("extract-zip");
 
@@ -87,6 +87,22 @@ function stageAppSource(stageDir) {
   return copied;
 }
 
+function packAsar(stageDir, dest) {
+  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  execFileSync(npx, [
+    "asar",
+    "pack",
+    stageDir,
+    dest,
+    "--unpack",
+    "{**/*.node,**/node-pty/build/Release/spawn-helper,**/node-pty/prebuilds/*/spawn-helper}",
+  ], { cwd: ROOT, stdio: "inherit" });
+
+  if (!fs.existsSync(dest)) {
+    throw new Error(`ASAR pack completed but did not create ${dest}`);
+  }
+}
+
 async function main() {
   const arch = parseArg("arch");
   if (!["x64", "arm64"].includes(arch)) {
@@ -126,10 +142,12 @@ async function main() {
 
   const appStage = fs.mkdtempSync(path.join(os.tmpdir(), "codex-linux-app-"));
   const staged = stageAppSource(appStage);
-  await asar.createPackageWithOptions(appStage, path.join(resourcesDir, "app.asar"), {
-    unpack: "{**/*.node,**/node-pty/build/Release/spawn-helper,**/node-pty/prebuilds/*/spawn-helper}",
-  });
-  fs.rmSync(appStage, { recursive: true, force: true });
+  const asarPath = path.join(resourcesDir, "app.asar");
+  try {
+    packAsar(appStage, asarPath);
+  } finally {
+    fs.rmSync(appStage, { recursive: true, force: true });
+  }
 
   const copied = copyDir(platformDir, resourcesDir);
   for (const executable of ["codex", "rg"]) {
