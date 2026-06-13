@@ -293,6 +293,10 @@ async function main() {
     } catch (e) { console.error(`   [x] win check: ${e.message}`); }
   }
 
+  if (!SKIP_WIN && !results.win) {
+    throw new Error("Windows upstream check failed; cannot sync or patch Windows build");
+  }
+
   if (CHECK_ONLY) {
     console.log("\n== Check only, skipping download ==");
     return;

@@ -166,7 +166,7 @@ function makeGetUrlSoap(updateID, revisionNumber, ring) {
 
 // ─── HTTP 辅助 ───────────────────────────────────────────────────
 
-function httpsRequest(url, options = {}) {
+function httpsRequestOnce(url, options = {}) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const reqOpts = {
@@ -186,13 +186,28 @@ function httpsRequest(url, options = {}) {
     });
 
     req.on("error", reject);
-    req.setTimeout(30000, () => {
+    req.setTimeout(options.timeoutMs || 90000, () => {
       req.destroy(new Error("Request timeout"));
     });
 
     if (options.body) req.write(options.body);
     req.end();
   });
+}
+
+async function httpsRequest(url, options = {}) {
+  const attempts = options.attempts || 3;
+  let lastError;
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      return await httpsRequestOnce(url, options);
+    } catch (error) {
+      lastError = error;
+      if (i === attempts) break;
+      await new Promise((resolve) => setTimeout(resolve, 1500 * i));
+    }
+  }
+  throw lastError;
 }
 
 function soapPost(url, body) {
