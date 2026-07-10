@@ -448,6 +448,39 @@ function formatSize(bytes) {
   return (num / (1024 * 1024 * 1024)).toFixed(2) + " GB";
 }
 
+function packageVersionParts(name) {
+  const match = String(name).match(/_(\d+(?:\.\d+){2,3})_/);
+  return match ? match[1].split(".").map(Number) : [];
+}
+
+function comparePackageVersionsDesc(a, b) {
+  const av = packageVersionParts(a.name);
+  const bv = packageVersionParts(b.name);
+  const length = Math.max(av.length, bv.length);
+  for (let i = 0; i < length; i += 1) {
+    const diff = (bv[i] || 0) - (av[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return String(a.name).localeCompare(String(b.name));
+}
+
+function selectPackageByArchitecture(packages, architecture = "x64") {
+  const arch = String(architecture).toLowerCase();
+  const marker = `_${arch}__`;
+  const matches = packages.filter((pkg) =>
+    String(pkg.name).toLowerCase().includes(marker)
+  );
+
+  if (matches.length === 0) {
+    const names = packages.map((pkg) => pkg.name).join(", ") || "(none)";
+    throw new Error(
+      `Microsoft Store did not return a ${arch} package. Available packages: ${names}`
+    );
+  }
+
+  return [...matches].sort(comparePackageVersionsDesc)[0];
+}
+
 // ─── 下载 ────────────────────────────────────────────────────────
 
 function downloadFile(url, destPath) {
@@ -629,7 +662,13 @@ async function main() {
 }
 
 // 支持作为模块导入
-module.exports = { getCookie, getAppInfo, getFileList, getDownloadUrl };
+module.exports = {
+  getCookie,
+  getAppInfo,
+  getFileList,
+  getDownloadUrl,
+  selectPackageByArchitecture,
+};
 
 // CLI 直接运行
 if (require.main === module) {

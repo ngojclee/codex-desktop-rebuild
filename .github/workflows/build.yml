@@ -59,6 +59,15 @@ jobs:
       - run: node scripts/sync-upstream.js --force --skip-mac
       - run: node scripts/patch-all.js win
       - run: npm run build:win-x64
+      - name: Verify Windows x64 artifact
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -LiteralPath out -Filter 'Codex-win-x64-*.zip' -File |
+            Select-Object -First 1
+          if (-not $zip) {
+            throw 'Windows x64 zip was not produced.'
+          }
+          & ./scripts/verify-windows-x64.ps1 -ZipPath $zip.FullName
       - uses: actions/upload-artifact@v7
         with:
           name: Codex-Windows-x64
