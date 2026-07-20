@@ -2,13 +2,17 @@ name: Sync Upstream & Patch
 
 on:
   schedule:
-    - cron: "0 8 * * *" # Daily 08:00 UTC
+    - cron: "37 */3 * * *" # Every 3h, offset from GitHub's top-of-hour load
   workflow_dispatch:
     inputs:
       force:
         description: "Force sync even without version change"
         type: boolean
         default: false
+
+concurrency:
+  group: sync-upstream-patch
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: "24"
@@ -35,9 +39,17 @@ jobs:
         id: detect
         run: |
           set +e
-          node scripts/check-update.js --json --force 2>&1
+          node scripts/check-update.js --json > update.json 2> update.err
           exit_code=$?
           set -e
+
+          cat update.json
+          cat update.err >&2
+
+          if [ $exit_code -gt 1 ]; then
+            echo "Upstream detection failed with exit code $exit_code."
+            exit $exit_code
+          fi
 
           if [ "${{ inputs.force }}" = "true" ]; then
             echo "has_update=true" >> "$GITHUB_OUTPUT"
@@ -241,15 +253,38 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n');
           "
 
+          RESULT_JSON="$RESULT" node - <<'NODE'
+          const fs = require('fs');
+          const result = JSON.parse(process.env.RESULT_JSON);
+          const checkedAt = result.timestamp || new Date().toISOString();
+          const state = {};
+          for (const [platform, info] of Object.entries(result.platforms || {})) {
+            state[platform] = {
+              version: info.version,
+              build: info.build || '',
+              checkedAt,
+            };
+          }
+          fs.writeFileSync(
+            'scripts/.versions.json',
+            JSON.stringify(state, null, 2) + '\n'
+          );
+          NODE
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add package.json
+          git add package.json scripts/.versions.json
           git diff --cached --quiet && echo "No version change" && exit 0
 
-          git commit -m "Bump version to ${VERSION}"
-          git tag -a "v${VERSION}" -m "Codex ${VERSION}"
-          git push origin HEAD --tags
+          git commit -m "Sync upstream versions to ${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${VERSION} already exists; pushing refreshed platform state only."
+            git push origin HEAD
+          else
+            git tag -a "v${VERSION}" -m "Codex ${VERSION}"
+            git push origin HEAD --tags
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v7

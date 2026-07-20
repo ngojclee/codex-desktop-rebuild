@@ -129,7 +129,7 @@ async function checkWindowsVersion() {
   return {
     platform: "Windows",
     version,
-    build: "",
+    build: String(pkg.digest || pkg.revisionNumber || ""),
     pubDate: "",
     downloadUrl: url,
     size: Number(pkg.size || 0),
@@ -169,6 +169,7 @@ async function main() {
   const saved = loadVersions();
   const results = [];
   const updates = [];
+  const errors = [];
 
   const checks = await Promise.allSettled([
     checkMacArm64Version(),
@@ -183,8 +184,10 @@ async function main() {
       const key = info.platform;
       const isNew = !saved[key] || saved[key].version !== info.version || saved[key].build !== info.build;
       if (isNew) updates.push(info);
-    } else if (!quiet) {
-      console.error(`  [!] ${r.reason.message}`);
+    } else {
+      const message = r.reason?.message || String(r.reason);
+      errors.push(message);
+      if (!quiet) console.error(`  [!] ${message}`);
     }
   }
 
@@ -195,6 +198,7 @@ async function main() {
       hasUpdates: updates.length > 0,
       platforms: Object.fromEntries(results.map((r) => [r.platform, r])),
       previous: saved,
+      errors,
     };
     console.log(JSON.stringify(output, null, 2));
   } else {
@@ -226,7 +230,7 @@ async function main() {
   }
 
   // 保存版本记录
-  if (doSave && results.length > 0) {
+  if (doSave && results.length > 0 && errors.length === 0) {
     const newSaved = { ...saved };
     for (const r of results) {
       newSaved[r.platform] = {
@@ -239,10 +243,14 @@ async function main() {
     if (!quiet) console.log(`💾 版本记录已保存到 ${VERSION_FILE}`);
   }
 
-  // 退出码: 0=有更新, 1=无更新（方便 CI 使用）
-  if (!force && updates.length === 0) process.exitCode = 1;
+  // Exit codes: 0=updates, 1=no updates, 2=detection failure.
+  if (errors.length > 0) {
+    process.exitCode = 2;
+  } else if (!force && updates.length === 0) {
+    process.exitCode = 1;
+  }
 
-  return { results, updates };
+  return { results, updates, errors };
 }
 
 module.exports = { checkMacArm64Version, checkMacX64Version, checkWindowsVersion };
