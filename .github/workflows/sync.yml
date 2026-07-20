@@ -294,6 +294,21 @@ jobs:
       - name: Display structure
         run: ls -lhR artifacts/
 
+      - name: Delete stale release assets
+        if: steps.version.outputs.version != ''
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' |
+              while IFS= read -r asset; do
+                [ -z "$asset" ] && continue
+                echo "Deleting stale release asset: $asset"
+                gh release delete-asset "$TAG" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+              done
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
         if: steps.version.outputs.version != ''
         uses: softprops/action-gh-release@v3
