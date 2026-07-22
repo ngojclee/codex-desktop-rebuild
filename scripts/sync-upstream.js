@@ -14,6 +14,7 @@
  *
  * Usage:
  *   node scripts/sync-upstream.js [--force] [--skip-mac] [--skip-win]
+ *     [--mac-arch arm64|x64]
  */
 
 const https = require("https");
@@ -45,6 +46,16 @@ const FORCE = args.includes("--force");
 const CHECK_ONLY = args.includes("--check-only");
 const SKIP_MAC = args.includes("--skip-mac");
 const SKIP_WIN = args.includes("--skip-win");
+const macArchIndex = args.indexOf("--mac-arch");
+const MAC_ARCH = macArchIndex === -1 ? null : args[macArchIndex + 1];
+
+if (macArchIndex !== -1 && !["arm64", "x64"].includes(MAC_ARCH)) {
+  console.error("[x] --mac-arch must be arm64 or x64");
+  process.exit(2);
+}
+
+const WANT_MAC_ARM64 = !SKIP_MAC && (!MAC_ARCH || MAC_ARCH === "arm64");
+const WANT_MAC_X64 = !SKIP_MAC && (!MAC_ARCH || MAC_ARCH === "x64");
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -154,11 +165,13 @@ async function getWindowsVersion() {
 
 // ─── Extract macOS ──────────────────────────────────────────────
 
-async function syncMac(variant, appcastUrl, destDir) {
+async function syncMac(variant, appcastUrl, destDir, detectedInfo = null) {
   const label = `macOS-${variant}`;
   console.log(`\n-- ${label}`);
 
-  const info = await getAppcastVersion(appcastUrl);
+  // Reuse the initial detection result. Fetching the appcast again after a
+  // long download can hit a stale keep-alive socket and fail with EPIPE.
+  const info = detectedInfo || await getAppcastVersion(appcastUrl);
   console.log(`   version: ${info.version} (build ${info.build})`);
 
   const zipPath = path.join(TEMP_DIR, `Codex-${variant}-${info.version}.zip`);
@@ -183,10 +196,10 @@ async function syncMac(variant, appcastUrl, destDir) {
 
 // ─── Extract Windows ────────────────────────────────────────────
 
-async function syncWin(destDir) {
+async function syncWin(destDir, detectedInfo = null) {
   console.log("\n-- Windows");
 
-  const info = await getWindowsVersion();
+  const info = detectedInfo || await getWindowsVersion();
   console.log(`   version: ${info.version}`);
 
   const msixPath = path.join(TEMP_DIR, info.packageName || `codex-win-${info.version}.msix`);
@@ -272,16 +285,18 @@ async function main() {
   const results = {};
 
   // Detect versions
-  if (!SKIP_MAC) {
+  if (WANT_MAC_ARM64) {
     try {
       const arm64Info = await getAppcastVersion(APPCAST_ARM64);
       console.log(`\n   mac-arm64: ${arm64Info.version} (build ${arm64Info.build})`);
       results["mac-arm64"] = arm64Info;
     } catch (e) { console.error(`   [x] mac-arm64 check: ${e.message}`); }
+  }
 
+  if (WANT_MAC_X64) {
     try {
       const x64Info = await getAppcastVersion(APPCAST_X64);
-      console.log(`   mac-x64:   ${x64Info.version} (build ${x64Info.build})`);
+      console.log(`${WANT_MAC_ARM64 ? "" : "\n"}   mac-x64:   ${x64Info.version} (build ${x64Info.build})`);
       results["mac-x64"] = x64Info;
     } catch (e) { console.error(`   [x] mac-x64 check: ${e.message}`); }
   }
@@ -294,6 +309,12 @@ async function main() {
     } catch (e) { console.error(`   [x] win check: ${e.message}`); }
   }
 
+  if (WANT_MAC_ARM64 && !results["mac-arm64"]) {
+    throw new Error("macOS arm64 upstream check failed; cannot sync requested build");
+  }
+  if (WANT_MAC_X64 && !results["mac-x64"]) {
+    throw new Error("macOS x64 upstream check failed; cannot sync requested build");
+  }
   if (!SKIP_WIN && !results.win) {
     throw new Error("Windows upstream check failed; cannot sync or patch Windows build");
   }
@@ -304,20 +325,24 @@ async function main() {
   }
 
   // Download and extract
-  if (!SKIP_MAC && results["mac-arm64"]) {
-    try {
-      results["mac-arm64"] = await syncMac("arm64", APPCAST_ARM64, path.join(SRC_DIR, "mac-arm64"));
-    } catch (e) { console.error(`   [x] mac-arm64: ${e.message}`); }
+  if (WANT_MAC_ARM64 && results["mac-arm64"]) {
+    results["mac-arm64"] = await syncMac(
+      "arm64",
+      APPCAST_ARM64,
+      path.join(SRC_DIR, "mac-arm64"),
+      results["mac-arm64"]
+    );
   }
-  if (!SKIP_MAC && results["mac-x64"]) {
-    try {
-      results["mac-x64"] = await syncMac("x64", APPCAST_X64, path.join(SRC_DIR, "mac-x64"));
-    } catch (e) { console.error(`   [x] mac-x64: ${e.message}`); }
+  if (WANT_MAC_X64 && results["mac-x64"]) {
+    results["mac-x64"] = await syncMac(
+      "x64",
+      APPCAST_X64,
+      path.join(SRC_DIR, "mac-x64"),
+      results["mac-x64"]
+    );
   }
   if (!SKIP_WIN && results.win) {
-    try {
-      results.win = await syncWin(path.join(SRC_DIR, "win"));
-    } catch (e) { console.error(`   [x] win: ${e.message}`); }
+    results.win = await syncWin(path.join(SRC_DIR, "win"), results.win);
   }
 
   const saved = loadVersions();

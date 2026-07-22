@@ -90,8 +90,8 @@ jobs:
         run: |
           brew install --quiet sevenzip
 
-      - name: Sync upstream (macOS only)
-        run: node scripts/sync-upstream.js --force --skip-win
+      - name: Sync upstream (macOS ${{ matrix.arch }} only)
+        run: node scripts/sync-upstream.js --force --skip-win --mac-arch ${{ matrix.arch }}
 
       - name: Patch
         run: node scripts/patch-all.js mac-${{ matrix.arch }}
@@ -186,8 +186,8 @@ jobs:
         run: |
           npm ci
 
-      - name: Sync upstream (macOS ZIP for unix, skip Windows)
-        run: node scripts/sync-upstream.js --force --skip-win
+      - name: Sync upstream (macOS ${{ matrix.arch }} ZIP for Linux)
+        run: node scripts/sync-upstream.js --force --skip-win --mac-arch ${{ matrix.arch }}
 
       - name: Patch
         run: node scripts/patch-all.js mac-${{ matrix.arch }}
