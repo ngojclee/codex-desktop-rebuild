@@ -23,6 +23,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { getSyncTempDir } = require("./sync-temp");
 
 // TLS certs for MS delivery CDN
 const certsDir = path.join(__dirname, "certs");
@@ -35,7 +36,7 @@ https.globalAgent.options.ca = extraCAs;
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const SRC_DIR = path.join(PROJECT_ROOT, "src");
-const TEMP_DIR = path.join(require("os").tmpdir(), "codex-sync");
+const TEMP_DIR = getSyncTempDir();
 const VERSION_FILE = path.join(__dirname, ".versions.json");
 
 const APPCAST_ARM64 = "https://persistent.oaistatic.com/codex-app-prod/appcast.xml";

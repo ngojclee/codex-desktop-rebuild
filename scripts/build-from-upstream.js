@@ -13,10 +13,12 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { getSyncTempDir } = require("./sync-temp");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const SRC_DIR = path.join(PROJECT_ROOT, "src");
 const OUT_DIR = path.join(PROJECT_ROOT, "out");
+const SYNC_TEMP_DIR = getSyncTempDir();
 
 const TARGET_TRIPLE_MAP = {
   "mac-arm64": "aarch64-apple-darwin",
@@ -112,7 +114,7 @@ function buildMac(platform) {
   }
 
   // 1. Find the .app in the ZIP extract cache
-  const tempDir = path.join(require("os").tmpdir(), "codex-sync");
+  const tempDir = SYNC_TEMP_DIR;
   const variant = platform === "mac-arm64" ? "arm64" : "x64";
   const extractDir = path.join(tempDir, `${variant}-extract`);
 
@@ -199,7 +201,7 @@ function buildWin(platform) {
   }
 
   // Windows: use the MSIX extract cache
-  const tempDir = path.join(require("os").tmpdir(), "codex-sync");
+  const tempDir = SYNC_TEMP_DIR;
   const extractDir = path.join(tempDir, "win-extract");
   const appDir = path.join(extractDir, "app");
 
