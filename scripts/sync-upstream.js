@@ -22,7 +22,7 @@ const tls = require("tls");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execFileSync, execSync } = require("child_process");
 const { getSyncTempDir } = require("./sync-temp");
 
 // TLS certs for MS delivery CDN
@@ -238,7 +238,18 @@ function assembleOutput(resourcesDir, destDir, label) {
   // 1. Extract app.asar → _asar/ (for patching)
   const asarDest = path.join(destDir, "_asar");
   console.log("   [asar extract] -> _asar/");
-  execSync(`npx asar extract "${asarPath}" "${asarDest}"`);
+  try {
+    execSync(`npx asar extract "${asarPath}" "${asarDest}"`, { stdio: "inherit" });
+  } catch (error) {
+    if (process.platform !== "win32") throw error;
+
+    console.log("   [warn] standard ASAR extraction failed; retrying with missing-unpacked tolerance");
+    execFileSync(
+      process.execPath,
+      [path.join(__dirname, "extract-asar-tolerant.js"), asarPath, asarDest],
+      { stdio: "inherit" }
+    );
+  }
 
   // 2. Copy app.asar.unpacked/ as-is (native modules)
   const unpackedSrc = path.join(resourcesDir, "app.asar.unpacked");
