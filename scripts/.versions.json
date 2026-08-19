@@ -2,16 +2,16 @@
   "macOS-arm64": {
     "version": "26.814.41957",
     "build": "6744",
-    "checkedAt": "2026-08-18T22:08:03.344Z"
+    "checkedAt": "2026-08-19T10:06:25.909Z"
   },
   "macOS-x64": {
     "version": "26.814.41957",
     "build": "6744",
-    "checkedAt": "2026-08-18T22:08:03.344Z"
+    "checkedAt": "2026-08-19T10:06:25.909Z"
   },
   "Windows": {
-    "version": "26.814.5167.0",
-    "build": "xv9f8MC85OSK8UrRnS7+/5+Nqvw=",
-    "checkedAt": "2026-08-18T22:08:03.344Z"
+    "version": "26.814.5517.0",
+    "build": "PNWZ/eglJ864eCYwRu7Pvll5Kwk=",
+    "checkedAt": "2026-08-19T10:06:25.909Z"
   }
 }
